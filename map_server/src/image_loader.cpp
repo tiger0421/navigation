@@ -145,8 +145,8 @@ loadMapFromFile(nav_msgs::GetMap::Response* resp,
         value = +100;
       else if(occ < free_th)
         value = 0;
-      else if(mode==TRINARY || alpha < 1.0)
-        value = -1;
+      //else if(mode==TRINARY || alpha < 1.0)
+      //  value = -1;
       else {
         double ratio = (occ - free_th) / (occ_th - free_th);
         value = 99 * ratio;

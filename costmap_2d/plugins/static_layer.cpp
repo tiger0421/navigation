@@ -148,14 +148,16 @@ void StaticLayer::matchSize()
 unsigned char StaticLayer::interpretValue(unsigned char value)
 {
   // check if the static value is above the unknown or lethal thresholds
-  if (track_unknown_space_ && value == unknown_cost_value_)
-    return NO_INFORMATION;
-  else if (!track_unknown_space_ && value == unknown_cost_value_)
-    return FREE_SPACE;
-  else if (value >= lethal_threshold_)
+//  if (track_unknown_space_ && value == unknown_cost_value_)
+//    return NO_INFORMATION;
+//  else if (!track_unknown_space_ && value == unknown_cost_value_)
+//    return FREE_SPACE;
+//  else if (value >= lethal_threshold_)
+//    return LETHAL_OBSTACLE;
+//  else if (trinary_costmap_)
+//    return FREE_SPACE;
+  if (value >= lethal_threshold_)
     return LETHAL_OBSTACLE;
-  else if (trinary_costmap_)
-    return FREE_SPACE;
 
   double scale = (double) value / lethal_threshold_;
   return scale * LETHAL_OBSTACLE;
