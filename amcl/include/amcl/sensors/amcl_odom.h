@@ -80,8 +80,8 @@ class AMCLOdom : public AMCLSensor
 
   // Update the filter based on the action model.  Returns true if the filter
   // has been updated.
-  public: virtual bool UpdateAction(pf_t *pf, AMCLSensorData *data);
-
+  // public: virtual bool UpdateAction(pf_t *pf, AMCLSensorData *data);
+     public: virtual bool UpdateAction(pf_t *pf, AMCLSensorData *data, AMCLSensorData *data2) ;
   // Current data timestamp
   private: double time;
   

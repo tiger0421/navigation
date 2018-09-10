@@ -169,12 +169,15 @@ class AmclNode
 
     //parameter for what odom to use
     std::string odom_frame_id_;
+    std::string odom2_frame_id_;
 
     //paramater to store latest odom pose
     tf::Stamped<tf::Pose> latest_odom_pose_;
+    tf::Stamped<tf::Pose> latest_odom2_pose_;
 
     //parameter for what base to use
     std::string base_frame_id_;
+    std::string base2_frame_id_;
     std::string global_frame_id_;
 
     bool use_map_topic_;
@@ -203,6 +206,7 @@ class AmclNode
     double pf_err_, pf_z_;
     bool pf_init_;
     pf_vector_t pf_odom_pose_;
+    pf_vector_t pf_odom2_pose_;
     double d_thresh_, a_thresh_;
     int resample_interval_;
     int resample_count_;
@@ -226,7 +230,7 @@ class AmclNode
     // Helper to get odometric pose from transform system
     bool getOdomPose(tf::Stamped<tf::Pose>& pose,
                      double& x, double& y, double& yaw,
-                     const ros::Time& t, const std::string& f);
+                     const ros::Time& t, const std::string& f, std::string odom_frame_id);
 
     //time for tolerance on the published transform,
     //basically defines how long a map->odom transform is good for
@@ -404,7 +408,9 @@ AmclNode::AmclNode() :
   private_nh_.param("update_min_d", d_thresh_, 0.2);
   private_nh_.param("update_min_a", a_thresh_, M_PI/6.0);
   private_nh_.param("odom_frame_id", odom_frame_id_, std::string("odom"));
+  private_nh_.param("odom2_frame_id", odom2_frame_id_, std::string("mea_odom"));//循環をcfgファイルとあわせないとエラーはく
   private_nh_.param("base_frame_id", base_frame_id_, std::string("base_link"));
+  private_nh_.param("base2_frame_id", base2_frame_id_, std::string("base_link2"));
   private_nh_.param("global_frame_id", global_frame_id_, std::string("map"));
   private_nh_.param("resample_interval", resample_interval_, 2);
   double tmp_tol;
@@ -598,7 +604,9 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
   }
 
   odom_frame_id_ = config.odom_frame_id;
+  odom2_frame_id_ = config.odom2_frame_id; //コンフィグでの順番とエラー出る
   base_frame_id_ = config.base_frame_id;
+  base2_frame_id_ = config.base2_frame_id;
   global_frame_id_ = config.global_frame_id;
 
   delete laser_scan_filter_;
@@ -956,14 +964,14 @@ AmclNode::~AmclNode()
 bool
 AmclNode::getOdomPose(tf::Stamped<tf::Pose>& odom_pose,
                       double& x, double& y, double& yaw,
-                      const ros::Time& t, const std::string& f)
+                      const ros::Time& t, const std::string& f, std::string odom_frame_id)
 {
   // Get the robot's pose
   tf::Stamped<tf::Pose> ident (tf::Transform(tf::createIdentityQuaternion(),
                                            tf::Vector3(0,0,0)), t, f);
   try
   {
-    this->tf_->transformPose(odom_frame_id_, ident, odom_pose);
+    this->tf_->transformPose(odom_frame_id, ident, odom_pose);
   }
   catch(tf::TransformException e)
   {
@@ -974,7 +982,7 @@ AmclNode::getOdomPose(tf::Stamped<tf::Pose>& odom_pose,
   y = odom_pose.getOrigin().y();
   double pitch,roll;
   odom_pose.getBasis().getEulerYPR(yaw, pitch, roll);
-
+  ROS_INFO("x: %f y: %f yaw %f odm_id %s ",x,y,yaw,odom_frame_id.c_str());
   return true;
 }
 
@@ -1096,7 +1104,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     {
       ROS_ERROR("Couldn't transform from %s to %s, "
                 "even though the message notifier is in use",
-                laser_scan->header.frame_id.c_str(),
+                laser_scan->header.frame_id.c_str(), 
                 base_frame_id_.c_str());
       return;
     }
@@ -1120,15 +1128,22 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
   // Where was the robot when this scan was taken?
   pf_vector_t pose;
+  pf_vector_t pose2;
   if(!getOdomPose(latest_odom_pose_, pose.v[0], pose.v[1], pose.v[2],
-                  laser_scan->header.stamp, base_frame_id_))
+                  laser_scan->header.stamp, base_frame_id_, odom_frame_id_))
+  {
+    ROS_ERROR("Couldn't determine robot's pose associated with laser scan");
+    return;
+  }
+  if(!getOdomPose(latest_odom2_pose_, pose2.v[0], pose2.v[1], pose2.v[2],
+                  laser_scan->header.stamp, base2_frame_id_, odom2_frame_id_))
   {
     ROS_ERROR("Couldn't determine robot's pose associated with laser scan");
     return;
   }
 
-
   pf_vector_t delta = pf_vector_zero();
+  pf_vector_t delta2 = pf_vector_zero(); // デルタは一つ前でodom情報
 
   if(pf_init_)
   {
@@ -1137,6 +1152,10 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     delta.v[0] = pose.v[0] - pf_odom_pose_.v[0];
     delta.v[1] = pose.v[1] - pf_odom_pose_.v[1];
     delta.v[2] = angle_diff(pose.v[2], pf_odom_pose_.v[2]);
+
+    delta2.v[0] = pose2.v[0] - pf_odom2_pose_.v[0];
+    delta2.v[1] = pose2.v[1] - pf_odom2_pose_.v[1];
+    delta2.v[2] = angle_diff(pose2.v[2], pf_odom2_pose_.v[2]);
 
     // See if we should update the filter
     bool update = fabs(delta.v[0]) > d_thresh_ ||
@@ -1156,6 +1175,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
   {
     // Pose at last filter update
     pf_odom_pose_ = pose;
+    pf_odom2_pose_ = pose2;	//構造体の代入
 
     // Filter is now initialized
     pf_init_ = true;
@@ -1175,15 +1195,18 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     //pf_vector_fprintf(pose, stdout, "%.3f");
 
     AMCLOdomData odata;
+    AMCLOdomData odata2;
     odata.pose = pose;
+    odata2.pose = pose2; 
     // HACK
     // Modify the delta in the action data so the filter gets
     // updated correctly
     odata.delta = delta;
+    odata2.delta = delta2;
 
     // Use the action data to update the filter
-    odom_->UpdateAction(pf_, (AMCLSensorData*)&odata);
-
+    odom_->UpdateAction(pf_, (AMCLSensorData*)&odata, (AMCLSensorData*)&odata2);
+    // odom_->UpdateAction(pf_, (AMCLSensorData*)&odata);
     // Pose at last filter update
     //this->pf_odom_pose = pose;
   }
