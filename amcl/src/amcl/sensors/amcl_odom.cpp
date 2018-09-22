@@ -31,10 +31,32 @@
 
 #include <sys/types.h> // required by Darwin
 #include <math.h>
+#include "SimpleSerial.h"
+#include <boost/lexical_cast.hpp>
+#include <iostream>
+#include <string>
+#include <vector>
+#include <iomanip>
+#include <stdio.h>
+#include <stdlib.h>
+// #include <time.h>
+#include <ros/ros.h>
+// #include <tf/transform_broadcaster.h>
+// #include <nav_msgs/Odometry.h>
+
+using namespace std;
+using namespace boost;
+SimpleSerial serial("/dev/sensors/keisoku",115200);
 
 #include "amcl_odom.h"
 
 using namespace amcl;
+
+using namespace std;
+using namespace boost;
+SimpleSerial serial("/dev/sensors/keisoku",115200);
+std::vector<std::string> split(std::string str, char del) ;
+void mea_odom_callback(double &x ,double &y ,double &th ,double &vx,double &vy,double &omega);
 
 static double
 normalize(double z)
@@ -108,8 +130,80 @@ AMCLOdom::SetModel( odom_model_t type,
   this->alpha5 = alpha5;
 }
 
+
+
+std::vector<std::string> split(std::string str, char del)
+ {
+    int first = 0;
+    int last = str.find_first_of(del);
+
+    std::vector<std::string> result;
+
+    while (first < str.size()) {
+        std::string subStr(str, first, last - first);
+
+        result.push_back(subStr);
+
+        first = last + 1;
+        last = str.find_first_of(del, first);
+
+        if (last == std::string::npos) {
+            last = str.size();
+        }
+    }
+
+    return result;
+}
+
+
+
+void mea_odom_callback(double &x ,double &y ,double &th ,double &vx,double &vy,double &omega)
+{
+ 
+    std::string str;
+    std::vector <std::string> s;
+    std::vector <double> d ;
+    char del = ',';
+
+    try {
+        str = serial.readLine(); 
+        
+        for (const auto subStr : split(str, del))
+        {
+            s.push_back(subStr);    
+        }
+    
+        for(int i = 0; i != s.size(); i++)   
+        {   
+            // d.push_back(std::stod(s[i])) ;
+            d.push_back( lexical_cast<double>( s[i] )) ; 
+        }
+
+        x = d[0];
+        y = d[1];
+        th = d[2];
+        vx = d[3];
+        vy = d[4];
+        omega = d[5];
+
+        s.clear();
+        d.clear();
+        
+        
+       
+    }catch(boost::system::system_error& e)
+    {
+        cout<<"Error: "<<e.what()<<endl;
+        // return 1;
+    }
+
+
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // Apply the action model
+// これがループで回るから諸々注意
 bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
 {
   AMCLOdomData *ndata;
@@ -117,9 +211,23 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
 
   // Compute the new sample poses
   pf_sample_set_t *set;
+  mea_odom_callback(mea_odom_x,mea_odom_y,mea_odom_th,mea_odom_vx,mea_odom_vy,mea_odom_omega) ;
 
   set = pf->sets + pf->current_set;
   pf_vector_t old_pose = pf_vector_sub(ndata->pose, ndata->delta);
+//受け取る(変換))
+  double mea_odom_x=0.0;//オドメトリX座標[m]
+  double mea_odom_y=0.0;//オドメトリY座標[m]
+  double mea_odom_th=0.0;//オドメトリ姿勢[rad]
+  double mea_odom_vx=0.0;
+  double mea_odom_vy=0.0;
+  double mea_odom_omega=0.0; 
+
+  mea_odom_callback(mea_odom_x,mea_odom_y,mea_odom_th,mea_odom_vx,mea_odom_vy,mea_odom_omega) ;
+
+
+// oldpose　差でとっとにてもとのアルゴリズムに代入　static? じゃないと問題？
+
 
   switch( this->model_type )
   {
