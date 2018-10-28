@@ -282,6 +282,8 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
   // Compute the sample weights
   total = (*sensor_fn) (sensor_data, set);
 
+
+/*
   if (total > 0.0)
   {
     // Normalize weights
@@ -310,7 +312,7 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
     //printf("w_avg: %e slow: %e fast: %e\n",
            //w_avg, pf->w_slow, pf->w_fast);
 
-/*----------------------------------------------------------------------------------*/
+//----------------------------------------------------------------------------------
     double beta = 1.0 - (w_sum / pf->alpha);
 	printf("beta : %e, w_v : %e\n", beta, w_v);
    if(beta > 0.0 && w_v < pf->reset_th_cov && pf->do_reset){    //誘拐状態
@@ -375,7 +377,7 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
     // else{
     //   printf("not kidnapped\n");
     // }
-/*------------------------------------------------------------------------------------*/
+//------------------------------------------------------------------------------------
 
 
   }
@@ -388,7 +390,7 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
       sample->weight = 1.0 / set->sample_count;
     }
   }
-
+  */
   return;
 }
 
@@ -740,4 +742,55 @@ int pf_get_cluster_stats(pf_t *pf, int clabel, double *weight,
   *cov = cluster->cov;
 
   return 1;
+}
+
+void normalizeParticle(pf_t *pf, amcl_state *state_t){
+
+    int i;
+    pf_sample_set_t *set;
+    pf_sample_t *sample;
+    double total;
+
+    set = pf->sets + pf->current_set;
+
+    double max_particle[3];
+    double max_weight = 0.0;
+    int max_particle_num;
+
+    // Normalize weights
+    double w_sum = 0.0;
+    double w_avg=0.0;
+    double w_sumv = 0.0, w_v = 0.0;
+    for (i = 0; i < set->sample_count; i++){
+        sample = set->samples + i;
+        w_avg += sample->weight;
+        w_sum += sample->weight * sample->weight;
+        state_t->total_weight += sample->weight;
+        if(sample->weight > max_weight){
+            max_particle_num = i;
+        }
+        sample->weight /= total;
+    }
+
+    sample = set->samples + max_particle_num;
+    state_t->max_weight_x = sample->pose.v[0];
+    state_t->max_weight_y = sample->pose.v[1];
+    state_t->max_weight_theta = sample->pose.v[2];
+    state_t->beta = 1 - state_t->total_weight / pf->alpha;
+
+    w_v = ((w_sumv) - (w_sum * w_sum / set->sample_count)) / set->sample_count;
+    // Update running averages of likelihood of samples (Prob Rob p258)
+    //w_avg /= set->sample_count;
+    w_avg = w_sum / set->sample_count;
+    if(pf->w_slow == 0.0)
+        pf->w_slow = w_avg;
+    else
+        pf->w_slow += pf->alpha_slow * (w_avg - pf->w_slow);
+    if(pf->w_fast == 0.0)
+        pf->w_fast = w_avg;
+    else
+        pf->w_fast += pf->alpha_fast * (w_avg - pf->w_fast);
+    //printf("w_avg: %e slow: %e fast: %e\n",
+         //w_avg, pf->w_slow, pf->w_fast);
+
 }

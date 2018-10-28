@@ -35,6 +35,7 @@
 #include "amcl/pf/pf.h"
 #include "amcl/sensors/amcl_odom.h"
 #include "amcl/sensors/amcl_laser.h"
+#include "amcl/sensors/amcl_gnss.h"
 
 #include "ros/assert.h"
 
@@ -208,7 +209,7 @@ class AmclNode
     int resample_count_;
     double laser_min_range_;
     double laser_max_range_;
-
+    amcl_state *amcl_state_t;
     //Nomotion update control
     bool m_force_update;  // used to temporarily let amcl update samples even when no motion occurs...
 
@@ -241,7 +242,7 @@ class AmclNode
     ros::ServiceServer set_map_srv_;
     ros::Subscriber initial_pose_sub_old_;
     ros::Subscriber map_sub_;
-    
+
     ros::ServiceServer set_reset_flag_srv_;
     amcl_hyp_t* initial_pose_hyp_;
     bool first_map_received_;
@@ -266,7 +267,7 @@ class AmclNode
     double init_cov_[3];
     laser_model_t laser_model_type_;
     bool tf_broadcast_;
-	
+
     bool do_reset_;
 
     void reconfigureCB(amcl::AMCLConfig &config, uint32_t level);
@@ -274,6 +275,8 @@ class AmclNode
     ros::Time last_laser_received_ts_;
     ros::Duration laser_check_interval_;
     void checkLaserReceived(const ros::TimerEvent& event);
+
+
 };
 
 std::vector<std::pair<int,int> > AmclNode::free_space_indices;
@@ -1064,7 +1067,7 @@ AmclNode::setResetFlagCallback(std_srvs::SetBool::Request& req,
   // ROS_INFO("do_reset: %d \n", (int)do_reset_);
   res.message = (do_reset_) ? std::string("true") : std::string("false");
   pf_set_reset_flag(pf_, (int) do_reset_);
-  
+
   res.success = true;
   return true;
 }
@@ -1256,7 +1259,12 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
               (i * angle_increment);
     }
 
+    //計測更新及び、最尤のパーティクルなどの算出
     lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
+    normalizeParticle(pf_, amcl_state_t);
+    if(amcl_state_t->beta > 0.0){
+        ROS_ERROR("Kidnapped");
+    }
 
     lasers_update_[laser_index] = false;
 

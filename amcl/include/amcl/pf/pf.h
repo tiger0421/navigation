@@ -136,6 +136,15 @@ typedef struct _pf_t
 
   double dist_threshold; //distance threshold in each axis over which the pf is considered to not be converged
   int converged;
+
+
+  //using expansin resetting and GNSS resetting
+  int use_ergr;
+  double gnss_sigma;
+  double pf_sigma;
+  double reset_gnss_sigma[2];
+  double sigma_th;
+  double kld_th;
 } pf_t;
 
 
@@ -196,6 +205,24 @@ int pf_update_converged(pf_t *pf);
 
 //sets the current set and pf converged values to zero
 void pf_init_converged(pf_t *pf);
+
+
+
+
+
+//----------------------ER+GR周り----------------------
+typedef struct amcl_state_{
+    double max_weight_x, max_weight_y, max_weight_theta;
+    double total_weight;
+    double average_weight;
+    double beta;
+    double particle_num;
+    double sigma;
+    double KLD_t;
+} amcl_state;
+
+
+void normalizeParticle(pf_t *pf, amcl_state *state_t);
 
 #ifdef __cplusplus
 }

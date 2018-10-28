@@ -11,6 +11,7 @@ find_package(catkin REQUIRED
             dynamic_reconfigure
             nav_msgs
             std_srvs
+            ecl_eigen
         )
 
 find_package(Boost REQUIRED)
@@ -52,7 +53,8 @@ add_library(amcl_map
 add_library(amcl_sensors
                     src/amcl/sensors/amcl_sensor.cpp
                     src/amcl/sensors/amcl_odom.cpp
-                    src/amcl/sensors/amcl_laser.cpp)
+                    src/amcl/sensors/amcl_laser.cpp
+                    src/amcl/sensors/amcl_gnss.cpp)
 target_link_libraries(amcl_sensors amcl_map amcl_pf)
 
 
