@@ -217,10 +217,9 @@ typedef struct amcl_state_{
     double average_weight;
     double beta;
     double particle_num;
-    double sigma;
-    double KLD_t;
+    double sigma_x, sigma_y;
+    double kld_t;
 } amcl_state;
-
 
 void normalizeParticle(pf_t *pf, amcl_state *state_t);
 

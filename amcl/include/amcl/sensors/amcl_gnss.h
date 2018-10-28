@@ -15,9 +15,9 @@ namespace amcl{
     private:
     public:
         AMCLGnss();
-        virtual void calKld(GnssSensorData *GNSS_data_t, amcl_state *state_t);
+        virtual void calKld(pf_t *pf, GnssSensorData *gnss_data_t, amcl_state *state_t);
         virtual void er(pf_t *pf, amcl_state *state_t);
-        virtual void ergr(pf_t *pf, GnssSensorData *GNSS_data_t, amcl_state *state_t);
+        virtual void ergr(pf_t *pf, GnssSensorData *gnss_data_t, amcl_state *state_t);
     };
 }
 #endif

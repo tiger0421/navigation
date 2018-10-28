@@ -744,6 +744,9 @@ int pf_get_cluster_stats(pf_t *pf, int clabel, double *weight,
   return 1;
 }
 
+
+
+
 void normalizeParticle(pf_t *pf, amcl_state *state_t){
 
     int i;
@@ -776,7 +779,9 @@ void normalizeParticle(pf_t *pf, amcl_state *state_t){
     state_t->max_weight_x = sample->pose.v[0];
     state_t->max_weight_y = sample->pose.v[1];
     state_t->max_weight_theta = sample->pose.v[2];
-    state_t->beta = 1 - state_t->total_weight / pf->alpha;
+    state_t->average_weight = state_t->total_weight / set->sample_count;
+    state_t->beta = 1 - state_t->average_weight / pf->alpha;
+    state_t->particle_num = set->sample_count;
 
     w_v = ((w_sumv) - (w_sum * w_sum / set->sample_count)) / set->sample_count;
     // Update running averages of likelihood of samples (Prob Rob p258)
@@ -790,7 +795,5 @@ void normalizeParticle(pf_t *pf, amcl_state *state_t){
         pf->w_fast = w_avg;
     else
         pf->w_fast += pf->alpha_fast * (w_avg - pf->w_fast);
-    //printf("w_avg: %e slow: %e fast: %e\n",
-         //w_avg, pf->w_slow, pf->w_fast);
 
 }

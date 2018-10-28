@@ -209,7 +209,7 @@ class AmclNode
     int resample_count_;
     double laser_min_range_;
     double laser_max_range_;
-    amcl_state *amcl_state_t;
+
     //Nomotion update control
     bool m_force_update;  // used to temporarily let amcl update samples even when no motion occurs...
 
@@ -336,7 +336,6 @@ AmclNode::AmclNode() :
 	do_reset_(true)
 {
   boost::recursive_mutex::scoped_lock l(configuration_mutex_);
-
   // Grab params off the param server
   private_nh_.param("use_map_topic", use_map_topic_, false);
   private_nh_.param("first_map_only", first_map_only_, false);
@@ -468,6 +467,8 @@ AmclNode::AmclNode() :
   laser_check_interval_ = ros::Duration(15.0);
   check_laser_timer_ = nh_.createTimer(laser_check_interval_,
                                        boost::bind(&AmclNode::checkLaserReceived, this, _1));
+
+
 }
 
 void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
@@ -1260,9 +1261,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     }
 
     //計測更新及び、最尤のパーティクルなどの算出
+    amcl_state amcl_state_t;
     lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
-    normalizeParticle(pf_, amcl_state_t);
-    if(amcl_state_t->beta > 0.0){
+    normalizeParticle(pf_, &amcl_state_t);
+    ROS_INFO("beta: %lf",amcl_state_t.beta);
+    if(amcl_state_t.beta > 0.0){
         ROS_ERROR("Kidnapped");
     }
 

@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(amcl)
+set(CMAKE_CXX_FLAGS "-march=native -O3 -std=c++11")
+set(CMAKE_SHARED_LIBRARY_LINK_C_FLAGS   "-march=native -O3")
+set(CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS "-march=native -O3")
+set(CMAKE_EXE_LINKER_FLAGS "-march=native -O3")
 
 find_package(catkin REQUIRED
         COMPONENTS
@@ -12,6 +16,7 @@ find_package(catkin REQUIRED
             nav_msgs
             std_srvs
             ecl_eigen
+            
         )
 
 find_package(Boost REQUIRED)
