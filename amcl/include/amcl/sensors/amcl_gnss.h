@@ -11,10 +11,10 @@ namespace amcl{
         int measurement_solve;
     };
 
-    class AMCLGnss : public GnssSensorData{
+    class AMCLGnssSensor : public GnssSensorData{
     private:
     public:
-        AMCLGnss();
+        AMCLGnssSensor();
         virtual void calKld(pf_t *pf, GnssSensorData *gnss_data_t, amcl_state *state_t);
         virtual void er(pf_t *pf, amcl_state *state_t);
         virtual void ergr(pf_t *pf, GnssSensorData *gnss_data_t, amcl_state *state_t);

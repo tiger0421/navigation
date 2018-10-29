@@ -212,15 +212,16 @@ void pf_init_converged(pf_t *pf);
 
 //----------------------ER+GR周り----------------------
 typedef struct amcl_state_{
-    double max_weight_x, max_weight_y, max_weight_theta;
+    double max_weight_pose[3];
     double total_weight;
     double average_weight;
     double beta;
     double particle_num;
-    double sigma_x, sigma_y;
+    double particle_sigma[3];
     double kld_t;
 } amcl_state;
 
+void state_init(amcl_state *state_t);
 void normalizeParticle(pf_t *pf, amcl_state *state_t);
 
 #ifdef __cplusplus

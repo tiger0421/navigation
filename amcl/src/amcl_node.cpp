@@ -47,6 +47,7 @@
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "geometry_msgs/PoseArray.h"
 #include "geometry_msgs/Pose.h"
+#include "sensor_msgs/NavSatFix.h"
 #include "nav_msgs/GetMap.h"
 #include "nav_msgs/SetMap.h"
 #include "std_srvs/Empty.h"
@@ -210,6 +211,7 @@ class AmclNode
     double laser_min_range_;
     double laser_max_range_;
 
+
     //Nomotion update control
     bool m_force_update;  // used to temporarily let amcl update samples even when no motion occurs...
 
@@ -275,6 +277,20 @@ class AmclNode
     ros::Time last_laser_received_ts_;
     ros::Duration laser_check_interval_;
     void checkLaserReceived(const ros::TimerEvent& event);
+
+
+    // GNSSまわり
+    AMCLGnssSensor gnss_sensor;
+    GnssSensorData gnss_data_t;
+    ros::Subscriber gnss_sub_;
+    void gnssCallBack(const sensor_msgs::NavSatFixConstPtr &gnss_data);
+    amcl_state amcl_state_t;
+    int use_ergr;
+    double gnss_sigma;
+    double pf_sigma;
+    double reset_gnss_sigma_x, reset_gnss_sigma_y;
+    double sigma_th;
+    double kld_th;
 
 
 };
@@ -418,6 +434,7 @@ AmclNode::AmclNode() :
   private_nh_.param("do_expansion_resettings",do_reset_,do_reset_);
   private_nh_.param("tf_broadcast", tf_broadcast_, true);
 
+
   transform_tolerance_.fromSec(tmp_tol);
 
   {
@@ -468,6 +485,17 @@ AmclNode::AmclNode() :
   check_laser_timer_ = nh_.createTimer(laser_check_interval_,
                                        boost::bind(&AmclNode::checkLaserReceived, this, _1));
 
+   // gnss周り
+   gnss_sub_ = nh_.subscribe("/gnss_point", 1, &AmclNode::gnssCallBack, this);
+   //amcl_state_t.particle_sigma[0] = 0.3;
+   state_init(&amcl_state_t);
+   // private_nh_.param("use_ERGR", use_ergr, 0);
+   // private_nh_.param("gnss_measure_sigma", gnss_sigma, 0.5);
+   // private_nh_.param("particle_sigma", pf_sigma, 0.5);
+   // private_nh_.param("reset_gnss_sigma_x", reset_gnss_sigma_x, 2.0);
+   // private_nh_.param("reset_gnss_sigma_y", reset_gnss_sigma_y, 2.0);
+   // private_nh_.param("particle_sigma_th", sigma_th, 20.0);
+   // private_nh_.param("kld_th", kld_th, 20.0);
 
 }
 
@@ -768,6 +796,14 @@ void AmclNode::updatePoseFromServer()
   else
     ROS_WARN("ignoring NAN in initial covariance AA");
 }
+
+void
+AmclNode::gnssCallBack(const sensor_msgs::NavSatFixConstPtr &gnss_data){
+    gnss_data_t.gnss_x = gnss_data->latitude;
+    gnss_data_t.gnss_y = gnss_data->longitude;
+}
+
+
 
 void
 AmclNode::checkLaserReceived(const ros::TimerEvent& event)
@@ -1261,12 +1297,14 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     }
 
     //計測更新及び、最尤のパーティクルなどの算出
-    amcl_state amcl_state_t;
+
+
     lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
     normalizeParticle(pf_, &amcl_state_t);
     ROS_INFO("beta: %lf",amcl_state_t.beta);
     if(amcl_state_t.beta > 0.0){
         ROS_ERROR("Kidnapped");
+        //gnss_sensor.er(pf_, &amcl_state_t);
     }
 
     lasers_update_[laser_index] = false;

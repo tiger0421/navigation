@@ -745,7 +745,10 @@ int pf_get_cluster_stats(pf_t *pf, int clabel, double *weight,
 }
 
 
-
+void state_init(amcl_state *state_t){
+    state_t->particle_sigma[0] = state_t->particle_sigma[1] = state_t->particle_sigma[2] = 0.3;
+    state_t->kld_t = 0.0;
+}
 
 void normalizeParticle(pf_t *pf, amcl_state *state_t){
 
@@ -760,10 +763,16 @@ void normalizeParticle(pf_t *pf, amcl_state *state_t){
     double max_weight = 0.0;
     int max_particle_num;
 
+    double x_sum = 0.0, y_sum = 0.0, theta_sum = 0.0;		//パラメータの和
+    double x_sumv = 0.0, y_sumv = 0.0, theta_sumv = 0.0;	    //２乗和
+    double x_v = 0.0, y_v = 0.0, theta_v = 0.0;		        //分散
+    double v_limit = 20.0;					                //分散の制限
+
     // Normalize weights
     double w_sum = 0.0;
     double w_avg=0.0;
     double w_sumv = 0.0, w_v = 0.0;
+
     for (i = 0; i < set->sample_count; i++){
         sample = set->samples + i;
         w_avg += sample->weight;
@@ -772,17 +781,52 @@ void normalizeParticle(pf_t *pf, amcl_state *state_t){
         if(sample->weight > max_weight){
             max_particle_num = i;
         }
+        x_sum += sample->pose.v[0];
+        x_sumv += sample->pose.v[0] * sample->pose.v[0];
+        y_sum += sample->pose.v[1];
+        y_sumv += sample->pose.v[1] * sample->pose.v[1];
+        theta_sum += sample->pose.v[2];
+        theta_sumv += sample->pose.v[2] * sample->pose.v[2];
+
         sample->weight /= total;
     }
 
+    x_v = (x_sumv - (x_sum * x_sum / set->sample_count)) / set->sample_count;
+    y_v = (y_sumv - (y_sum * y_sum / set->sample_count)) / set->sample_count;
+    theta_v = (theta_sumv - (theta_sum * theta_sum / set->sample_count)) / set->sample_count;
+    //分散の制限, オーバーフロー防止
+    if(x_v >= v_limit){
+        x_v = v_limit;
+    }
+    else if(x_v <= -v_limit){
+        x_v = -v_limit;
+    }
+
+    if(y_v >= v_limit){
+        y_v = v_limit;
+     }
+     else if(y_v <= -v_limit){
+         y_v = -v_limit;
+     }
+
+     if(theta_v >= M_PI/2){
+        theta_v = M_PI/2;
+     }
+     else if(theta_v <= -M_PI/2){
+         theta_v = -M_PI/2;
+     }
+
+
     sample = set->samples + max_particle_num;
-    state_t->max_weight_x = sample->pose.v[0];
-    state_t->max_weight_y = sample->pose.v[1];
-    state_t->max_weight_theta = sample->pose.v[2];
+    state_t->max_weight_pose[0] = sample->pose.v[0];
+    state_t->max_weight_pose[1] = sample->pose.v[1];
+    state_t->max_weight_pose[2] = sample->pose.v[2];
     state_t->average_weight = state_t->total_weight / set->sample_count;
     state_t->beta = 1 - state_t->average_weight / pf->alpha;
     state_t->particle_num = set->sample_count;
-
+    state_t->particle_sigma[0] = x_v;
+    state_t->particle_sigma[1] = y_v;
+    state_t->particle_sigma[2] = theta_v;
     w_v = ((w_sumv) - (w_sum * w_sum / set->sample_count)) / set->sample_count;
     // Update running averages of likelihood of samples (Prob Rob p258)
     //w_avg /= set->sample_count;
