@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <unistd.h>
+#include <ctime>
+#include <cstdlib>
 
 #include <Eigen/Core>
 #include <Eigen/Dense>
@@ -13,7 +15,7 @@
 using namespace amcl;
 
 AMCLGnssSensor :: AMCLGnssSensor(){
-
+	std::srand( std::time(NULL) );
 }
 
 void AMCLGnssSensor :: calKld(pf_t *pf, GnssSensorData *gnss_data_t, amcl_state *state_t){
@@ -43,28 +45,30 @@ void AMCLGnssSensor :: calKld(pf_t *pf, GnssSensorData *gnss_data_t, amcl_state 
 
 void AMCLGnssSensor :: er(pf_t *pf, amcl_state *state_t){
 
-	int reset_count = 5;
+	int reset_count = 0;
 	pf_sample_set_t *set;
 	pf_sample_t *sample;
 
 	set = pf->sets + pf->current_set;
 
 	int reset_limit = ( (int)state_t->particle_sigma[0] + (int)state_t->particle_sigma[1]) / 2;
-
 	if(reset_count >= reset_limit){
 		for(int i=0; i<set->sample_count; i++){
+			sample = set->samples + i;
 			sample->pose.v[0] += (drand48() * 4 * state_t->particle_sigma[0]) - (2 * state_t->particle_sigma[0]);
 			sample->pose.v[1] += (drand48() * 4 * state_t->particle_sigma[1]) - (2 * state_t->particle_sigma[1]);
 			sample->pose.v[2] += (drand48() * 2 * state_t->particle_sigma[2]) - (1 * state_t->particle_sigma[2]);
 
 			sample->weight = 1.0 / set->sample_count;
 		}
+		reset_count = 0;
 	}
+	reset_count++;
 
 }
 
 void AMCLGnssSensor :: ergr(pf_t *pf, GnssSensorData *gnss_data_t, amcl_state *state_t){
-	int reset_count = 5;
+	int reset_count = 0;
 	pf_sample_set_t *set;
 	pf_sample_t *sample;
 
@@ -78,6 +82,7 @@ void AMCLGnssSensor :: ergr(pf_t *pf, GnssSensorData *gnss_data_t, amcl_state *s
 		// 論文では角度情報は全て棄却していたが、つくばで使用する場合は逆に誘拐状態になる可能性があるため
 		// 棄却を行わない
 		for(int i=0; i<reset_particle_num; i++){
+			sample = set->samples + i;
 			sample->pose.v[0] += gnss_data_t->gnss_x;
 			sample->pose.v[1] += gnss_data_t->gnss_x;
 		}
@@ -85,12 +90,15 @@ void AMCLGnssSensor :: ergr(pf_t *pf, GnssSensorData *gnss_data_t, amcl_state *s
 		int reset_limit = ( (int)state_t->particle_sigma[0] + (int)state_t->particle_sigma[1]) / 2;
 		if(reset_count >= reset_limit){
 			for(int i=0; i<set->sample_count; i++){
+				sample = set->samples + i;
 				sample->pose.v[0] += (drand48() * 4 * state_t->particle_sigma[0]) - (2 * state_t->particle_sigma[0]);
 				sample->pose.v[1] += (drand48() * 4 * state_t->particle_sigma[1]) - (2 * state_t->particle_sigma[1]);
 				sample->pose.v[2] += (drand48() * 2 * state_t->particle_sigma[2]) - (1 * state_t->particle_sigma[2]);
 
 				sample->weight = 1.0 / set->sample_count;
 			}
+			reset_count = 0;
 		}
+		reset_count++;
 	}
 }

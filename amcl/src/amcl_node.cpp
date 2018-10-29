@@ -1304,7 +1304,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     ROS_INFO("beta: %lf",amcl_state_t.beta);
     if(amcl_state_t.beta > 0.0){
         ROS_ERROR("Kidnapped");
-        //gnss_sensor.er(pf_, &amcl_state_t);
+        gnss_sensor.er(pf_, &amcl_state_t);
     }
 
     lasers_update_[laser_index] = false;

@@ -283,10 +283,10 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
   total = (*sensor_fn) (sensor_data, set);
 
 
-/*
+
   if (total > 0.0)
   {
-    // Normalize weights
+/*    // Normalize weights
     double w_sum = 0.0;
     double w_avg=0.0;
     double w_sumv = 0.0, w_v = 0.0;
@@ -379,7 +379,7 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
     // }
 //------------------------------------------------------------------------------------
 
-
+*/
   }
   else
   {
@@ -390,7 +390,7 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
       sample->weight = 1.0 / set->sample_count;
     }
   }
-  */
+
   return;
 }
 
@@ -780,6 +780,7 @@ void normalizeParticle(pf_t *pf, amcl_state *state_t){
         state_t->total_weight += sample->weight;
         if(sample->weight > max_weight){
             max_particle_num = i;
+            max_weight = sample->weight;
         }
         x_sum += sample->pose.v[0];
         x_sumv += sample->pose.v[0] * sample->pose.v[0];
@@ -788,7 +789,7 @@ void normalizeParticle(pf_t *pf, amcl_state *state_t){
         theta_sum += sample->pose.v[2];
         theta_sumv += sample->pose.v[2] * sample->pose.v[2];
 
-        sample->weight /= total;
+        //sample->weight /= total;
     }
 
     x_v = (x_sumv - (x_sum * x_sum / set->sample_count)) / set->sample_count;
