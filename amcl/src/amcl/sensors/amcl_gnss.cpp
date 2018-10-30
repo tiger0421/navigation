@@ -17,15 +17,19 @@ using namespace amcl;
 AMCLGnssSensor :: AMCLGnssSensor(){
 	std::srand( std::time(NULL) );
 }
-
+void AMCLGnssSensor ::initGnssData(GnssSensorData *gnss_data_t){
+	gnss_data_t->gnss_x = 0;
+	gnss_data_t->gnss_y = 0;
+}
 void AMCLGnssSensor :: calKld(pf_t *pf, GnssSensorData *gnss_data_t, amcl_state *state_t){
 
-	int d = 2.0;	//次元数　GNSSの計測値に角度がないためx, yの二次元でKL情報量を計算する
+	int d = 2;	//次元数　GNSSの計測値に角度がないためx, yの二次元でKL情報量を計算する
 	Eigen::Vector2d amcl_position_t;
 	Eigen::Matrix2d amcl_sigma;
 
 	Eigen::Vector2d gnss_position_t;
 	Eigen::Matrix2d	gnss_sigma;
+
 
 
 	amcl_position_t << state_t->max_weight_pose[0], state_t->max_weight_pose[1];
@@ -40,7 +44,12 @@ void AMCLGnssSensor :: calKld(pf_t *pf, GnssSensorData *gnss_data_t, amcl_state 
 					+ (gnss_sigma.inverse() * amcl_sigma).trace()
 						+ (amcl_position_t - gnss_position_t).transpose() * gnss_sigma.inverse() * (amcl_position_t - gnss_position_t)
 							- d ) / 2;
+	//double kld = log(10) ;
 	state_t->kld_t = kld;
+	// std::cout << state_t->particle_sigma[0] << "\t" << state_t->particle_sigma[0] << std::endl;
+	// std::cout << pf->reset_gnss_sigma[0] << "\t" << pf->reset_gnss_sigma[1] << std::endl;
+	// std::cout << state_t->max_weight_pose[0] << "\t" << state_t->max_weight_pose[1] << "\t"
+	// 	<< gnss_data_t->gnss_x << "\t" << gnss_data_t->gnss_y << "\t" << kld << std::endl;
 }
 
 void AMCLGnssSensor :: er(pf_t *pf, amcl_state *state_t){
@@ -76,15 +85,14 @@ void AMCLGnssSensor :: ergr(pf_t *pf, GnssSensorData *gnss_data_t, amcl_state *s
 	int reset_particle_num = state_t->particle_num * state_t->beta / (1 + state_t->beta);	//GNSS計測展に置くパーティクルの数
 	double particle_sigma_sum = (state_t->particle_sigma[0] + state_t->particle_sigma[1]) / 2;
 
-
 	if(particle_sigma_sum > pf->sigma_th && state_t->kld_t > pf->kld_th){
 		// GRを行う
 		// 論文では角度情報は全て棄却していたが、つくばで使用する場合は逆に誘拐状態になる可能性があるため
 		// 棄却を行わない
 		for(int i=0; i<reset_particle_num; i++){
 			sample = set->samples + i;
-			sample->pose.v[0] += gnss_data_t->gnss_x;
-			sample->pose.v[1] += gnss_data_t->gnss_x;
+			sample->pose.v[0] = gnss_data_t->gnss_x;
+			sample->pose.v[1] = gnss_data_t->gnss_y;
 		}
 	}else{
 		int reset_limit = ( (int)state_t->particle_sigma[0] + (int)state_t->particle_sigma[1]) / 2;

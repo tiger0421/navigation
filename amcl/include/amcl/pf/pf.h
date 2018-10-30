@@ -139,7 +139,6 @@ typedef struct _pf_t
 
 
   //using expansin resetting and GNSS resetting
-  int use_ergr;
   double gnss_sigma;
   double pf_sigma;
   double reset_gnss_sigma[2];
@@ -151,9 +150,12 @@ typedef struct _pf_t
 // Create a new filter
 pf_t *pf_alloc(int min_samples, int max_samples,
                double alpha_slow, double alpha_fast,
-	       int do_reset,
+               int do_reset,
                double alpha, double reset_th_cov,
-               pf_init_model_fn_t random_pose_fn, void *random_pose_data);
+               pf_init_model_fn_t random_pose_fn, void *random_pose_data,
+               double gnss_sigma, double pf_sigma,
+               double gr_sigma_x, double gr_sigma_y,
+               double pf_th_cov, double kld_th);
 
 void pf_set_reset_flag(pf_t *pf, int flag);
 
@@ -217,7 +219,7 @@ typedef struct amcl_state_{
     double average_weight;
     double beta;
     double particle_num;
-    double particle_sigma[3];
+    double particle_sigma[2];
     double kld_t;
 } amcl_state;
 

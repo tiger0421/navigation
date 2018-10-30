@@ -44,9 +44,12 @@ static int pf_resample_limit(pf_t *pf, int k);
 // Create a new filter
 pf_t *pf_alloc(int min_samples, int max_samples,
                double alpha_slow, double alpha_fast,
-		int do_reset,
+               int do_reset,
                double alpha, double reset_th_cov,
-               pf_init_model_fn_t random_pose_fn, void *random_pose_data)
+               pf_init_model_fn_t random_pose_fn, void *random_pose_data,
+               double gnss_sigma, double pf_sigma,
+               double gr_sigma_x, double gr_sigma_y,
+               double pf_th_cov, double kld_th)
 {
   int i, j;
   pf_t *pf;
@@ -109,6 +112,13 @@ pf_t *pf_alloc(int min_samples, int max_samples,
   pf->do_reset = do_reset;
   pf->alpha = alpha;
   pf->reset_th_cov = reset_th_cov;
+
+  pf->gnss_sigma = gnss_sigma;
+  pf->pf_sigma = pf_sigma;
+  pf->reset_gnss_sigma[0] = gr_sigma_x;
+  pf->reset_gnss_sigma[1] = gr_sigma_y;
+  pf->sigma_th=pf_th_cov;
+  pf->kld_th = kld_th;
 
   //set converged to 0
   pf_init_converged(pf);
@@ -828,6 +838,7 @@ void normalizeParticle(pf_t *pf, amcl_state *state_t){
     state_t->particle_sigma[0] = x_v;
     state_t->particle_sigma[1] = y_v;
     state_t->particle_sigma[2] = theta_v;
+    
     w_v = ((w_sumv) - (w_sum * w_sum / set->sample_count)) / set->sample_count;
     // Update running averages of likelihood of samples (Prob Rob p258)
     //w_avg /= set->sample_count;
@@ -840,5 +851,7 @@ void normalizeParticle(pf_t *pf, amcl_state *state_t){
         pf->w_fast = w_avg;
     else
         pf->w_fast += pf->alpha_fast * (w_avg - pf->w_fast);
+
+    //printf("%lf\t%lf\n", state_t->max_weight_pose[0], state_t->max_weight_pose[1]);
 
 }

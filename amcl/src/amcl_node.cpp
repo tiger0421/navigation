@@ -285,11 +285,11 @@ class AmclNode
     ros::Subscriber gnss_sub_;
     void gnssCallBack(const sensor_msgs::NavSatFixConstPtr &gnss_data);
     amcl_state amcl_state_t;
-    int use_ergr;
+    bool use_ergr;
     double gnss_sigma;
     double pf_sigma;
-    double reset_gnss_sigma_x, reset_gnss_sigma_y;
-    double sigma_th;
+    double reset_gnss_sigmax, reset_gnss_sigmay;
+    double sigma_th_;
     double kld_th;
 
 
@@ -434,6 +434,19 @@ AmclNode::AmclNode() :
   private_nh_.param("do_expansion_resettings",do_reset_,do_reset_);
   private_nh_.param("tf_broadcast", tf_broadcast_, true);
 
+  // gnss周り
+  gnss_sub_ = nh_.subscribe("/gnss_point", 1, &AmclNode::gnssCallBack, this);
+  //amcl_state_t.particle_sigma[0] = 0.3;
+  state_init(&amcl_state_t);
+  gnss_sensor.initGnssData(&gnss_data_t);
+  private_nh_.param("use_ERGR", use_ergr, true);
+  private_nh_.param("gnss_measure_sigma", gnss_sigma, 0.5);
+  private_nh_.param("particle_sigma", pf_sigma, 0.5);
+  private_nh_.param("gnss_sigmax", reset_gnss_sigmax, 2.0);
+  private_nh_.param("gnss_sigmay", reset_gnss_sigmay, 2.0);
+  private_nh_.param("particle_sigma_th", sigma_th_, 10.0);
+  private_nh_.param("kld_th", kld_th, 10.0);
+
 
   transform_tolerance_.fromSec(tmp_tol);
 
@@ -485,17 +498,7 @@ AmclNode::AmclNode() :
   check_laser_timer_ = nh_.createTimer(laser_check_interval_,
                                        boost::bind(&AmclNode::checkLaserReceived, this, _1));
 
-   // gnss周り
-   gnss_sub_ = nh_.subscribe("/gnss_point", 1, &AmclNode::gnssCallBack, this);
-   //amcl_state_t.particle_sigma[0] = 0.3;
-   state_init(&amcl_state_t);
-   // private_nh_.param("use_ERGR", use_ergr, 0);
-   // private_nh_.param("gnss_measure_sigma", gnss_sigma, 0.5);
-   // private_nh_.param("particle_sigma", pf_sigma, 0.5);
-   // private_nh_.param("reset_gnss_sigma_x", reset_gnss_sigma_x, 2.0);
-   // private_nh_.param("reset_gnss_sigma_y", reset_gnss_sigma_y, 2.0);
-   // private_nh_.param("particle_sigma_th", sigma_th, 20.0);
-   // private_nh_.param("kld_th", kld_th, 20.0);
+
 
 }
 
@@ -583,7 +586,10 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
 		 (int)do_reset_,
                  alpha_,reset_th_cov_,
                  (pf_init_model_fn_t)AmclNode::uniformPoseGenerator,
-                 (void *)map_);
+                 (void *)map_,
+                 gnss_sigma, pf_sigma,
+                 reset_gnss_sigmax, reset_gnss_sigmay,
+                 sigma_th_, kld_th);
   pf_err_ = config.kld_err;
   pf_z_ = config.kld_z;
   pf_->pop_err = pf_err_;
@@ -885,7 +891,10 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
 		 (int)do_reset_,
                  alpha_, reset_th_cov_,
                  (pf_init_model_fn_t)AmclNode::uniformPoseGenerator,
-                 (void *)map_);
+                 (void *)map_,
+                 gnss_sigma, pf_sigma,
+                 reset_gnss_sigmax, reset_gnss_sigmay,
+                 sigma_th_, kld_th);
   pf_->pop_err = pf_err_;
   pf_->pop_z = pf_z_;
 
@@ -1301,10 +1310,14 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
     lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
     normalizeParticle(pf_, &amcl_state_t);
-    ROS_INFO("beta: %lf",amcl_state_t.beta);
     if(amcl_state_t.beta > 0.0){
         ROS_ERROR("Kidnapped");
-        gnss_sensor.er(pf_, &amcl_state_t);
+        if(use_ergr){
+            gnss_sensor.calKld(pf_, &gnss_data_t, &amcl_state_t);
+            gnss_sensor.ergr(pf_, &gnss_data_t, &amcl_state_t);
+        }else{
+            gnss_sensor.er(pf_, &amcl_state_t);
+        }
     }
 
     lasers_update_[laser_index] = false;
