@@ -91,8 +91,8 @@ void AMCLGnssSensor :: ergr(pf_t *pf, GnssSensorData *gnss_data_t, amcl_state *s
 		// 棄却を行わない
 		for(int i=0; i<reset_particle_num; i++){
 			sample = set->samples + i;
-			sample->pose.v[0] = gnss_data_t->gnss_x;
-			sample->pose.v[1] = gnss_data_t->gnss_y;
+			sample->pose.v[0] = gnss_data_t->gnss_x + (drand48()*2*pf->reset_gnss_sigma[0] - pf->reset_gnss_sigma[0]);
+			sample->pose.v[1] = gnss_data_t->gnss_y + (drand48()*2*pf->reset_gnss_sigma[1] - pf->reset_gnss_sigma[1]);
 		}
 	}else{
 		int reset_limit = ( (int)state_t->particle_sigma[0] + (int)state_t->particle_sigma[1]) / 2;

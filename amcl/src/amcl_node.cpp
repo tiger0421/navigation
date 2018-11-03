@@ -439,7 +439,7 @@ AmclNode::AmclNode() :
   //amcl_state_t.particle_sigma[0] = 0.3;
   state_init(&amcl_state_t);
   gnss_sensor.initGnssData(&gnss_data_t);
-  private_nh_.param("use_ERGR", use_ergr, true);
+  private_nh_.param("use_ERGR", use_ergr, false);
   private_nh_.param("gnss_measure_sigma", gnss_sigma, 0.5);
   private_nh_.param("particle_sigma", pf_sigma, 0.5);
   private_nh_.param("gnss_sigmax", reset_gnss_sigmax, 2.0);
