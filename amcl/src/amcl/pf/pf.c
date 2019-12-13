@@ -553,6 +553,54 @@ int pf_resample_limit(pf_t *pf, int k)
   return n;
 }
 
+void pf_delete_sample_on_cost(pf_t *pf)
+{
+
+  pf_sample_set_t *set_a, *set_b;
+  pf_sample_t *sample_a, *sample_b;
+
+  set_a = pf->sets + pf->current_set;
+  set_b = pf->sets + (pf->current_set + 1) % 2;
+
+  double total = 0;
+  set_b->sample_count = 0;
+
+  pf_kdtree_clear(set_b->kdtree);
+
+  for(int i=0; i<set_a->sample_count; i++)
+  {
+    assert(i<set_a->sample_count);
+    sample_a = set_a->samples + i;
+
+    if(sample_a->pose.v[0] < 3){
+      sample_b = set_b->samples + set_b->sample_count++;
+      sample_b->pose = sample_a->pose;
+      sample_b->weight = 1.0;
+      total += sample_b->weight;
+      pf_kdtree_insert(set_b->kdtree, sample_b->pose, sample_b->weight);
+    }
+  }
+
+  // Normalize weights
+  for (int i = 0; i < set_b->sample_count; i++)
+  {
+    sample_b = set_b->samples + i;
+    sample_b->weight /= total;
+  }
+
+  // Re-compute cluster statistics
+  pf_cluster_stats(pf, set_b);
+
+  // Use the newly created sample set
+  pf->current_set = (pf->current_set + 1) % 2;
+
+  pf_update_converged(pf);
+
+  return;
+
+}
+
+
 
 // Re-compute the cluster statistics for a sample set
 void pf_cluster_stats(pf_t *pf, pf_sample_set_t *set)
@@ -740,4 +788,8 @@ int pf_get_cluster_stats(pf_t *pf, int clabel, double *weight,
   *cov = cluster->cov;
 
   return 1;
+}
+
+void pf_set_map(pf_t *pf, map_t *map){
+  pf->map = map;
 }

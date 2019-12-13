@@ -152,14 +152,18 @@ class AmclNode
     bool setMapCallback(nav_msgs::SetMap::Request& req,
                         nav_msgs::SetMap::Response& res);
 
+    bool setCostMapCallback(nav_msgs::SetMap::Request& req,
+                        nav_msgs::SetMap::Response& res);
+
     bool setResetFlagCallback(std_srvs::SetBool::Request& req,
 			      std_srvs::SetBool::Response& res);
     void laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan);
     void initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg);
     void handleInitialPoseMessage(const geometry_msgs::PoseWithCovarianceStamped& msg);
     void mapReceived(const nav_msgs::OccupancyGridConstPtr& msg);
+    void costmapReceived(const nav_msgs::OccupancyGridConstPtr& msg);
 
-    void handleMapMessage(const nav_msgs::OccupancyGrid& msg);
+    void handleMapMessage(const nav_msgs::OccupancyGrid& msg, bool costmap = false);
     void freeMapDependentMemory();
     map_t* convertMap( const nav_msgs::OccupancyGrid& map_msg );
     void updatePoseFromServer();
@@ -178,7 +182,7 @@ class AmclNode
     std::string global_frame_id_;
 
     bool use_map_topic_;
-    bool first_map_only_;
+    bool first_map_only_, first_cost_map_only_;
 
     ros::Duration gui_publish_period;
     ros::Time save_pose_last_time;
@@ -187,6 +191,7 @@ class AmclNode
     geometry_msgs::PoseWithCovarianceStamped last_published_pose;
 
     map_t* map_;
+    map_t* cost_map_;
     char* mapdata;
     int sx, sy;
     double resolution;
@@ -241,10 +246,11 @@ class AmclNode
     ros::ServiceServer set_map_srv_;
     ros::Subscriber initial_pose_sub_old_;
     ros::Subscriber map_sub_;
+    ros::Subscriber cost_map_sub_;
     
     ros::ServiceServer set_reset_flag_srv_;
     amcl_hyp_t* initial_pose_hyp_;
-    bool first_map_received_;
+    bool first_map_received_, first_cost_map_received_;
     bool first_reconfigure_call_;
 
     boost::recursive_mutex configuration_mutex_;
@@ -274,6 +280,8 @@ class AmclNode
     ros::Time last_laser_received_ts_;
     ros::Duration laser_check_interval_;
     void checkLaserReceived(const ros::TimerEvent& event);
+
+    bool do_delete_sample_on_cost_;
 };
 
 std::vector<std::pair<int,int> > AmclNode::free_space_indices;
@@ -322,6 +330,7 @@ AmclNode::AmclNode() :
         sent_first_transform_(false),
         latest_tf_valid_(false),
         map_(NULL),
+        cost_map_(NULL),
         pf_(NULL),
         resample_count_(0),
         odom_(NULL),
@@ -329,6 +338,7 @@ AmclNode::AmclNode() :
 	      private_nh_("~"),
         initial_pose_hyp_(NULL),
         first_map_received_(false),
+        first_cost_map_received_(false),
         first_reconfigure_call_(true),
 	do_reset_(true)
 {
@@ -416,6 +426,8 @@ AmclNode::AmclNode() :
   private_nh_.param("do_expansion_resettings",do_reset_,do_reset_);
   private_nh_.param("tf_broadcast", tf_broadcast_, true);
 
+  private_nh_.param("do_delete_sample_on_cost", do_delete_sample_on_cost_, false);
+
   transform_tolerance_.fromSec(tmp_tol);
 
   {
@@ -455,6 +467,9 @@ AmclNode::AmclNode() :
   } else {
     requestMap();
   }
+
+  if(do_delete_sample_on_cost_)cost_map_sub_ = nh_.subscribe("cost_map", 1, &AmclNode::costmapReceived, this);
+
   m_force_update = false;
 
   dsrv_ = new dynamic_reconfigure::Server<amcl::AMCLConfig>(ros::NodeHandle("~"));
@@ -808,7 +823,19 @@ AmclNode::mapReceived(const nav_msgs::OccupancyGridConstPtr& msg)
 }
 
 void
-AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
+AmclNode::costmapReceived(const nav_msgs::OccupancyGridConstPtr& msg)
+{
+  if( first_cost_map_only_ && first_cost_map_received_ ) {
+    return;
+  }
+
+  handleMapMessage( *msg , true);
+
+  first_cost_map_received_ = true;
+}
+
+void
+AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg, bool costmap)
 {
   boost::recursive_mutex::scoped_lock cfl(configuration_mutex_);
 
@@ -1266,6 +1293,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     if(!(++resample_count_ % resample_interval_))
     {
       pf_update_resample(pf_);
+      if(do_delete_sample_on_cost_)pf_delete_sample_on_cost(pf_);
       resampled = true;
     }
 
