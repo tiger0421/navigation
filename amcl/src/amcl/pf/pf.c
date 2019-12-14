@@ -555,8 +555,15 @@ int pf_resample_limit(pf_t *pf, int k)
 
 void pf_delete_sample_on_cost(pf_t *pf)
 {
-  printf("deleta_sample on cost\n");
-  //if(pf->map_received)printf("costmap ox:%lf oy:%lf\n", pf->map.origin_x, pf->map.origin_y);
+
+  if(!pf->map_received)
+  {
+    printf("pf: not receive map\n");
+    return;
+  }
+
+  printf("pf: delete sample on cost\n");
+
   pf_sample_set_t *set_a, *set_b;
   pf_sample_t *sample_a, *sample_b;
 
@@ -572,14 +579,22 @@ void pf_delete_sample_on_cost(pf_t *pf)
   {
     assert(i<set_a->sample_count);
     sample_a = set_a->samples + i;
+    
+    int mi, mj;
+    int occ_state;
+    mi = MAP_GXWX(pf->map, sample_a->pose.v[0]);
+    mj = MAP_GYWY(pf->map, sample_a->pose.v[1]);
 
-    if(sample_a->pose.v[0] < 3){
+    occ_state = pf->map->cells[MAP_INDEX(pf->map,mi,mj)].occ_state;
+
+    if(occ_state <= 0){
       sample_b = set_b->samples + set_b->sample_count++;
       sample_b->pose = sample_a->pose;
       sample_b->weight = 1.0;
       total += sample_b->weight;
       pf_kdtree_insert(set_b->kdtree, sample_b->pose, sample_b->weight);
     }
+    else printf("delete sample\n");
   }
 
   // Normalize weights
@@ -792,6 +807,6 @@ int pf_get_cluster_stats(pf_t *pf, int clabel, double *weight,
 }
 
 void pf_set_map(pf_t *pf, map_t *map){
-  pf->map = *map;
+  pf->map = map;
   pf->map_received = 1;
 }

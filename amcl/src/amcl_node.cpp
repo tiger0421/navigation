@@ -167,6 +167,7 @@ class AmclNode
     void handleCostMapMessage(const nav_msgs::OccupancyGrid& msg);
     void freeMapDependentMemory();
     map_t* convertMap( const nav_msgs::OccupancyGrid& map_msg );
+    map_t* convertCostMap( const nav_msgs::OccupancyGrid& map_msg );
     void updatePoseFromServer();
     void applyInitialPose();
 
@@ -430,7 +431,7 @@ AmclNode::AmclNode() :
   private_nh_.param("tf_broadcast", tf_broadcast_, true);
 
   private_nh_.param("do_delete_sample_on_cost", do_delete_sample_on_cost_, false);
-  private_nh_.param("costmap_topic", costmap_topic_, std::string("map_for_costmap"));
+  private_nh_.param("costmap_topic", costmap_topic_, std::string("/move_base/global_costmap/costmap"));
 
   transform_tolerance_.fromSec(tmp_tol);
 
@@ -472,7 +473,7 @@ AmclNode::AmclNode() :
     requestMap();
   }
 
-  if(do_delete_sample_on_cost_)costmap_sub_ = nh_.subscribe("map_for_costmap", 1, &AmclNode::costmapReceived, this);
+  if(do_delete_sample_on_cost_)costmap_sub_ = nh_.subscribe(costmap_topic_, 1, &AmclNode::costmapReceived, this);
 
   m_force_update = false;
 
@@ -995,6 +996,35 @@ AmclNode::convertMap( const nav_msgs::OccupancyGrid& map_msg )
   return map;
 }
 
+map_t*
+AmclNode::convertCostMap( const nav_msgs::OccupancyGrid& map_msg )
+{
+  map_t* map = map_alloc();
+  ROS_ASSERT(map);
+
+  map->size_x = map_msg.info.width;
+  map->size_y = map_msg.info.height;
+  map->scale = map_msg.info.resolution;
+  map->origin_x = map_msg.info.origin.position.x + (map->size_x / 2) * map->scale;
+  map->origin_y = map_msg.info.origin.position.y + (map->size_y / 2) * map->scale;
+  // Convert to player format
+  map->cells = (map_cell_t*)malloc(sizeof(map_cell_t)*map->size_x*map->size_y);
+  ROS_ASSERT(map->cells);
+  for(int i=0;i<map->size_x * map->size_y;i++)
+  {
+    if(map_msg.data[i] == 0)
+      map->cells[i].occ_state = 0;
+    else if(map_msg.data[i] > 0)
+      map->cells[i].occ_state = +1;
+    else if(map_msg.data[i] == -1)
+      map->cells[i].occ_state = -1;
+    else ROS_ERROR("costmap invalid value");
+  }
+
+  return map;
+}
+
+
 AmclNode::~AmclNode()
 {
   delete dsrv_;
@@ -1315,12 +1345,10 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     // Resample the particles
     if(!(++resample_count_ % resample_interval_))
     {
-      ROS_INFO("DEBUG resample fcr:%d dodelete: %d", first_costmap_received_, do_delete_sample_on_cost_);
       pf_update_resample(pf_);
       if(do_delete_sample_on_cost_ && first_costmap_received_)
       {
 	pf_delete_sample_on_cost(pf_);
-        ROS_INFO("DEBUG delete sample");
       }
       resampled = true;
     }
