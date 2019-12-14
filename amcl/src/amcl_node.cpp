@@ -1346,15 +1346,16 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     if(!(++resample_count_ % resample_interval_))
     {
       pf_update_resample(pf_);
-      if(do_delete_sample_on_cost_ && first_costmap_received_)
-      {
-	pf_delete_sample_on_cost(pf_);
-      }
       resampled = true;
     }
 
     pf_sample_set_t* set = pf_->sets + pf_->current_set;
     ROS_DEBUG("Num samples: %d\n", set->sample_count);
+
+    if(do_delete_sample_on_cost_ && first_costmap_received_)
+    {
+      pf_delete_sample_on_cost(pf_);
+    }
 
     // Publish the resulting cloud
     // TODO: set maximum rate for publishing

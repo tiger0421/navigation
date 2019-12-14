@@ -590,7 +590,7 @@ void pf_delete_sample_on_cost(pf_t *pf)
     if(occ_state <= 0){
       sample_b = set_b->samples + set_b->sample_count++;
       sample_b->pose = sample_a->pose;
-      sample_b->weight = 1.0;
+      sample_b->weight = sample_a->weight;
       total += sample_b->weight;
       pf_kdtree_insert(set_b->kdtree, sample_b->pose, sample_b->weight);
     }
