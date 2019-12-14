@@ -555,7 +555,8 @@ int pf_resample_limit(pf_t *pf, int k)
 
 void pf_delete_sample_on_cost(pf_t *pf)
 {
-
+  printf("deleta_sample on cost\n");
+  //if(pf->map_received)printf("costmap ox:%lf oy:%lf\n", pf->map.origin_x, pf->map.origin_y);
   pf_sample_set_t *set_a, *set_b;
   pf_sample_t *sample_a, *sample_b;
 
@@ -791,5 +792,6 @@ int pf_get_cluster_stats(pf_t *pf, int clabel, double *weight,
 }
 
 void pf_set_map(pf_t *pf, map_t *map){
-  pf->map = map;
+  pf->map = *map;
+  pf->map_received = 1;
 }

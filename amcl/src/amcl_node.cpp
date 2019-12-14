@@ -163,7 +163,8 @@ class AmclNode
     void mapReceived(const nav_msgs::OccupancyGridConstPtr& msg);
     void costmapReceived(const nav_msgs::OccupancyGridConstPtr& msg);
 
-    void handleMapMessage(const nav_msgs::OccupancyGrid& msg, bool costmap = false);
+    void handleMapMessage(const nav_msgs::OccupancyGrid& msg);
+    void handleCostMapMessage(const nav_msgs::OccupancyGrid& msg);
     void freeMapDependentMemory();
     map_t* convertMap( const nav_msgs::OccupancyGrid& map_msg );
     void updatePoseFromServer();
@@ -182,7 +183,7 @@ class AmclNode
     std::string global_frame_id_;
 
     bool use_map_topic_;
-    bool first_map_only_, first_cost_map_only_;
+    bool first_map_only_, first_costmap_only_;
 
     ros::Duration gui_publish_period;
     ros::Time save_pose_last_time;
@@ -191,7 +192,7 @@ class AmclNode
     geometry_msgs::PoseWithCovarianceStamped last_published_pose;
 
     map_t* map_;
-    map_t* cost_map_;
+    map_t* costmap_;
     char* mapdata;
     int sx, sy;
     double resolution;
@@ -246,11 +247,11 @@ class AmclNode
     ros::ServiceServer set_map_srv_;
     ros::Subscriber initial_pose_sub_old_;
     ros::Subscriber map_sub_;
-    ros::Subscriber cost_map_sub_;
+    ros::Subscriber costmap_sub_;
     
     ros::ServiceServer set_reset_flag_srv_;
     amcl_hyp_t* initial_pose_hyp_;
-    bool first_map_received_, first_cost_map_received_;
+    bool first_map_received_, first_costmap_received_;
     bool first_reconfigure_call_;
 
     boost::recursive_mutex configuration_mutex_;
@@ -282,6 +283,7 @@ class AmclNode
     void checkLaserReceived(const ros::TimerEvent& event);
 
     bool do_delete_sample_on_cost_;
+    std::string costmap_topic_;
 };
 
 std::vector<std::pair<int,int> > AmclNode::free_space_indices;
@@ -330,7 +332,7 @@ AmclNode::AmclNode() :
         sent_first_transform_(false),
         latest_tf_valid_(false),
         map_(NULL),
-        cost_map_(NULL),
+        costmap_(NULL),
         pf_(NULL),
         resample_count_(0),
         odom_(NULL),
@@ -338,7 +340,8 @@ AmclNode::AmclNode() :
 	      private_nh_("~"),
         initial_pose_hyp_(NULL),
         first_map_received_(false),
-        first_cost_map_received_(false),
+        first_costmap_received_(false),
+        first_costmap_only_(true),
         first_reconfigure_call_(true),
 	do_reset_(true)
 {
@@ -427,6 +430,7 @@ AmclNode::AmclNode() :
   private_nh_.param("tf_broadcast", tf_broadcast_, true);
 
   private_nh_.param("do_delete_sample_on_cost", do_delete_sample_on_cost_, false);
+  private_nh_.param("costmap_topic", costmap_topic_, std::string("map_for_costmap"));
 
   transform_tolerance_.fromSec(tmp_tol);
 
@@ -468,7 +472,7 @@ AmclNode::AmclNode() :
     requestMap();
   }
 
-  if(do_delete_sample_on_cost_)cost_map_sub_ = nh_.subscribe("cost_map", 1, &AmclNode::costmapReceived, this);
+  if(do_delete_sample_on_cost_)costmap_sub_ = nh_.subscribe("map_for_costmap", 1, &AmclNode::costmapReceived, this);
 
   m_force_update = false;
 
@@ -825,17 +829,18 @@ AmclNode::mapReceived(const nav_msgs::OccupancyGridConstPtr& msg)
 void
 AmclNode::costmapReceived(const nav_msgs::OccupancyGridConstPtr& msg)
 {
-  if( first_cost_map_only_ && first_cost_map_received_ ) {
+  if( first_costmap_only_ && first_costmap_received_ ) {
     return;
   }
 
-  handleMapMessage( *msg , true);
+  handleCostMapMessage( *msg );
 
-  first_cost_map_received_ = true;
+  first_costmap_received_ = true;
+  ROS_INFO("costmap receveid");
 }
 
 void
-AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg, bool costmap)
+AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
 {
   boost::recursive_mutex::scoped_lock cfl(configuration_mutex_);
 
@@ -875,6 +880,7 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg, bool costmap)
                  (void *)map_);
   pf_->pop_err = pf_err_;
   pf_->pop_z = pf_z_;
+
 
   // Initialize the filter
   updatePoseFromServer();
@@ -922,6 +928,23 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg, bool costmap)
   // try to apply the initial pose now that the map has arrived.
   applyInitialPose();
 
+}
+
+void
+AmclNode::handleCostMapMessage(const nav_msgs::OccupancyGrid& msg)
+{
+   ROS_INFO("Received a %d X %d map @ %.3f m/pix\n",
+           msg.info.width,
+           msg.info.height,
+           msg.info.resolution);
+
+  if(msg.header.frame_id != global_frame_id_)
+    ROS_WARN("Frame_id of cost map received:'%s' doesn't match global_frame_id:'%s;'. This could cause issues with reading published topics",
+             msg.header.frame_id.c_str(),
+             global_frame_id_.c_str());
+
+  costmap_ = convertMap(msg);
+  if(do_delete_sample_on_cost_)pf_set_map(pf_, costmap_);
 }
 
 void
@@ -1292,8 +1315,13 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     // Resample the particles
     if(!(++resample_count_ % resample_interval_))
     {
+      ROS_INFO("DEBUG resample fcr:%d dodelete: %d", first_costmap_received_, do_delete_sample_on_cost_);
       pf_update_resample(pf_);
-      if(do_delete_sample_on_cost_)pf_delete_sample_on_cost(pf_);
+      if(do_delete_sample_on_cost_ && first_costmap_received_)
+      {
+	pf_delete_sample_on_cost(pf_);
+        ROS_INFO("DEBUG delete sample");
+      }
       resampled = true;
     }
 
