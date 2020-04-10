@@ -50,6 +50,8 @@
 
 //for computing path distance
 #include <queue>
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/utils.h>
 
 using namespace std;
 using namespace costmap_2d;
@@ -86,7 +88,6 @@ namespace base_local_planner{
         double resolution = costmap_.getResolution();
         gdist_scale_ *= resolution;
         pdist_scale_ *= resolution;
-        occdist_scale_ *= resolution;
       }
 
       oscillation_reset_dist_ = config.oscillation_reset_dist;
@@ -369,32 +370,19 @@ namespace base_local_planner{
   }
 
   double TrajectoryPlanner::headingDiff(int cell_x, int cell_y, double x, double y, double heading){
-    double heading_diff = DBL_MAX;
     unsigned int goal_cell_x, goal_cell_y;
-    const double v2_x = cos(heading);
-    const double v2_y = sin(heading);
 
-    //find a clear line of sight from the robot's cell to a point on the path
+    // find a clear line of sight from the robot's cell to a farthest point on the path
     for (int i = global_plan_.size() - 1; i >=0; --i) {
       if (costmap_.worldToMap(global_plan_[i].pose.position.x, global_plan_[i].pose.position.y, goal_cell_x, goal_cell_y)) {
         if (lineCost(cell_x, goal_cell_x, cell_y, goal_cell_y) >= 0) {
           double gx, gy;
           costmap_.mapToWorld(goal_cell_x, goal_cell_y, gx, gy);
-          double v1_x = gx - x;
-          double v1_y = gy - y;
-
-          double perp_dot = v1_x * v2_y - v1_y * v2_x;
-          double dot = v1_x * v2_x + v1_y * v2_y;
-
-          //get the signed angle
-          double vector_angle = atan2(perp_dot, dot);
-
-          heading_diff = fabs(vector_angle);
-          return heading_diff;
+          return fabs(angles::shortest_angular_distance(heading, atan2(gy - y, gx - x)));
         }
       }
     }
-    return heading_diff;
+    return DBL_MAX;
   }
 
   //calculate the cost of a ray-traced line
@@ -916,11 +904,11 @@ namespace base_local_planner{
   }
 
   //given the current state of the robot, find a good trajectory
-  Trajectory TrajectoryPlanner::findBestPath(tf::Stamped<tf::Pose> global_pose, tf::Stamped<tf::Pose> global_vel,
-      tf::Stamped<tf::Pose>& drive_velocities){
+  Trajectory TrajectoryPlanner::findBestPath(const geometry_msgs::PoseStamped& global_pose,
+      geometry_msgs::PoseStamped& global_vel, geometry_msgs::PoseStamped& drive_velocities) {
 
-    Eigen::Vector3f pos(global_pose.getOrigin().getX(), global_pose.getOrigin().getY(), tf::getYaw(global_pose.getRotation()));
-    Eigen::Vector3f vel(global_vel.getOrigin().getX(), global_vel.getOrigin().getY(), tf::getYaw(global_vel.getRotation()));
+    Eigen::Vector3f pos(global_pose.pose.position.x, global_pose.pose.position.y, tf2::getYaw(global_pose.pose.orientation));
+    Eigen::Vector3f vel(global_vel.pose.position.x, global_vel.pose.position.y, tf2::getYaw(global_vel.pose.orientation));
 
     //reset the map for new operations
     path_map_.resetPathDist();
@@ -976,14 +964,21 @@ namespace base_local_planner{
     */
 
     if(best.cost_ < 0){
-      drive_velocities.setIdentity();
+      drive_velocities.pose.position.x = 0;
+      drive_velocities.pose.position.y = 0;
+      drive_velocities.pose.position.z = 0;
+      drive_velocities.pose.orientation.w = 1;
+      drive_velocities.pose.orientation.x = 0;
+      drive_velocities.pose.orientation.y = 0;
+      drive_velocities.pose.orientation.z = 0;
     }
     else{
-      tf::Vector3 start(best.xv_, best.yv_, 0);
-      drive_velocities.setOrigin(start);
-      tf::Matrix3x3 matrix;
-      matrix.setRotation(tf::createQuaternionFromYaw(best.thetav_));
-      drive_velocities.setBasis(matrix);
+      drive_velocities.pose.position.x = best.xv_;
+      drive_velocities.pose.position.y = best.yv_;
+      drive_velocities.pose.position.z = 0;
+      tf2::Quaternion q;
+      q.setRPY(0, 0, best.thetav_);
+      tf2::convert(q, drive_velocities.pose.orientation);
     }
 
     return best;

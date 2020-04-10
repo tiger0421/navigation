@@ -2,45 +2,52 @@
 Changelog for package fake_localization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-1.12.13 (2016-08-15)
---------------------
+1.16.3 (2019-11-15)
+-------------------
+* Merge pull request `#831 <https://github.com/ros-planning/navigation/issues/831>`_ from ros-planning/feature/remove_slashes
+  [melodic] Remove leading slashes from default frame_id parameters
+* Remove leading slashes from default frame_id parameters
+* Fix for `#805 <https://github.com/ros-planning/navigation/issues/805>`_ (`#813 <https://github.com/ros-planning/navigation/issues/813>`_)
+* Contributors: David V. Lu, David V. Lu!!, Michael Ferguson
 
-1.12.12 (2016-06-24)
---------------------
-
-1.12.11 (2016-06-08)
---------------------
-
-1.12.10 (2016-05-27)
---------------------
-
-1.12.9 (2016-05-26)
+1.16.2 (2018-07-31)
 -------------------
 
-1.12.8 (2016-05-16)
+1.16.1 (2018-07-28)
 -------------------
 
-1.12.7 (2016-01-05)
+1.16.0 (2018-07-25)
+-------------------
+* Merge pull request `#690 <https://github.com/ros-planning/navigation/issues/690>`_ from ros-planning/lunar_609
+  switch fake_localization to tf2.
+* Contributors: Michael Ferguson, Vincent Rabaud
+
+1.15.2 (2018-03-22)
+-------------------
+* Merge pull request `#673 <https://github.com/ros-planning/navigation/issues/673>`_ from ros-planning/email_update_lunar
+  update maintainer email (lunar)
+* Merge pull request `#649 <https://github.com/ros-planning/navigation/issues/649>`_ from aaronhoy/lunar_add_ahoy
+  Add myself as a maintainer.
+* Contributors: Aaron Hoy, Michael Ferguson
+
+1.15.1 (2017-08-14)
 -------------------
 
-1.12.6 (2016-01-02)
+1.15.0 (2017-08-07)
+-------------------
+* convert packages to format2
+* Fix CMakeLists + package.xmls (`#548 <https://github.com/ros-planning/navigation/issues/548>`_)
+* Contributors: Martin Günther, Mikael Arguedas, Vincent Rabaud
+
+1.14.0 (2016-05-20)
 -------------------
 
-1.12.5 (2015-10-29)
+1.13.1 (2015-10-29)
 -------------------
 * More tolerant initial pose transform lookup.
 * Contributors: Daniel Stonier
 
-1.12.4 (2015-06-03)
--------------------
-
-1.12.3 (2015-04-30)
--------------------
-
-1.12.2 (2015-03-31)
--------------------
-
-1.12.1 (2015-03-14)
+1.13.0 (2015-03-17)
 -------------------
 
 1.12.0 (2015-02-04)

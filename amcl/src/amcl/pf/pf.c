@@ -29,25 +29,25 @@
 #include <math.h>
 #include <stdlib.h>
 #include <time.h>
+#include <stdbool.h>
 
-#include "pf.h"
-#include "pf_pdf.h"
-#include "pf_kdtree.h"
+#include "amcl/pf/pf.h"
+#include "amcl/pf/pf_pdf.h"
+#include "amcl/pf/pf_kdtree.h"
+#include "portable_utils.hpp"
 
 // Compute the required number of samples, given that there are k bins
 // with samples in them.
 static int pf_resample_limit(pf_t *pf, int k);
 
-// Re-compute the cluster statistics for a sample set
-static void pf_cluster_stats(pf_t *pf, pf_sample_set_t *set);
 
 
 // Create a new filter
 pf_t *pf_alloc(int min_samples, int max_samples,
                double alpha_slow, double alpha_fast,
-               int do_reset,
+               bool do_reset,
                double alpha, double reset_th_cov,
-               pf_init_model_fn_t random_pose_fn, void *random_pose_data)
+	       pf_init_model_fn_t random_pose_fn, void *random_pose_data)
 {
   int i, j;
   pf_t *pf;
@@ -106,6 +106,9 @@ pf_t *pf_alloc(int min_samples, int max_samples,
 
   pf->alpha_slow = alpha_slow;
   pf->alpha_fast = alpha_fast;
+  pf->do_reset = do_reset;
+  pf->alpha = alpha;
+  pf->reset_th_cov = reset_th_cov;
 
   pf->do_reset = do_reset;
   pf->alpha = alpha;
@@ -117,11 +120,8 @@ pf_t *pf_alloc(int min_samples, int max_samples,
   return pf;
 }
 
-
-void pf_set_reset_flag(pf_t *pf, int flag)
-{
+void pf_set_reset_flag(pf_t *pf, bool flag){
   pf->do_reset = flag;
-  // printf("%d\n", pf->do_reset);
 }
 
 // Free an existing filter
@@ -288,9 +288,9 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
   if (total > 0.0)
   {
     // Normalize weights
-	double w_sum = 0.0;
-    double w_avg = 0.0;
-    double w_sumv = 0.0, w_v = 0.0;
+    double w_sum=0.0;
+    double w_avg=0.0;
+    double w_sumv=0.0, w_v=0.0;
     for (i = 0; i < set->sample_count; i++)
     {
       sample = set->samples + i;
@@ -298,10 +298,9 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
       w_sumv += sample->weight * sample->weight;
       sample->weight /= total;
     }
-    w_v = ((w_sumv) - (w_sum * w_sum / set->sample_count)) / set->sample_count;
-
-    // Update running averages of likelihood of samples (Prob Rob p258)    
-    w_avg = w_sum / set->sample_count;
+    // Update running averages of likelihood of samples (Prob Rob p258)
+    w_sum = w_avg;
+    w_avg /= set->sample_count;
     if(pf->w_slow == 0.0)
       pf->w_slow = w_avg;
     else
@@ -313,82 +312,73 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
     //printf("w_avg: %e slow: %e fast: %e\n", 
            //w_avg, pf->w_slow, pf->w_fast);
 
-
-/*----------------------------------------------------------------------------------*/
+    /*----------------------------------------------------------------------------------*/
+    //pf->alpha=1.2;
     double beta = 1.0 - (w_sum / pf->alpha);
-//	printf("w_sum : %e, w_v : %e\n", w_sum, w_v);
+    printf("beta : %lf w_sum : %lf pf->alpha : %lf\n", beta,w_sum,pf->alpha);
+    if(beta > 0.0 && w_v < pf->reset_th_cov && pf->do_reset){    //誘拐状態
+       double x_sum = 0.0, y_sum = 0.0, theta_sum = 0.0;		//パラメータの和
+       double x_sumv = 0.0, y_sumv = 0.0, theta_sumv = 0.0;	    //２乗和
+       double x_v = 0.0, y_v = 0.0, theta_v = 0.0;		        //分散
+       double v_limit = 20.0;					                //分散の制限
+       int limit = 0;
+       int reset_limit = 0, reset_count = 0;
+       printf("kidnapped\n");
+       pf_kdtree_clear(set->kdtree);
+       for (i = 0; i < set->sample_count; i++){
+           sample = set->samples + i;
+           x_sum += sample->pose.v[0];
+           x_sumv += sample->pose.v[0] * sample->pose.v[0];
+           y_sum += sample->pose.v[1];
+           y_sumv += sample->pose.v[1] * sample->pose.v[1];
+           theta_sum += sample->pose.v[2];
+           theta_sumv += sample->pose.v[2] * sample->pose.v[2];
+       }
 
-    if(beta > 0.0 && w_v < pf->reset_th_cov && pf->do_reset)		//誘拐状態
-    {
-      double x_sum = 0.0, y_sum = 0.0, theta_sum = 0.0;		//パラメータの和
-      double x_sumv = 0.0, y_sumv = 0.0, theta_sumv = 0.0;	//２乗和
-      double x_v = 0.0, y_v = 0.0, theta_v = 0.0;		//分散
-      double v_limit = 20.0;					//分散の制限
-      int limit = 0;
-      int reset_limit = 0, reset_count = 0;
+       x_v = (x_sumv - (x_sum * x_sum / set->sample_count)) / set->sample_count;
+       y_v = (y_sumv - (y_sum * y_sum / set->sample_count)) / set->sample_count;
+       theta_v = (theta_sumv - (theta_sum * theta_sum / set->sample_count)) / set->sample_count;
+       //分散の制限, オーバーフロー防止
+       if(x_v >= v_limit){
+           x_v = v_limit;
+       }
+       else if(x_v <= -v_limit){
+           x_v = -v_limit;
+       }
 
-      // printf("kidnapped\n");
-      
-      pf_kdtree_clear(set->kdtree);
-      
-      for (i = 0; i < set->sample_count; i++)
-      {
-        sample = set->samples + i;
-        x_sum += sample->pose.v[0];
-        x_sumv += sample->pose.v[0] * sample->pose.v[0];
-        y_sum += sample->pose.v[1];
-        y_sumv += sample->pose.v[1] * sample->pose.v[1];
-        theta_sum += sample->pose.v[2];
-        theta_sumv += sample->pose.v[2] * sample->pose.v[2];
-      }
+       if(y_v >= v_limit){
+           y_v = v_limit;
+        }
+        else if(y_v <= -v_limit){
+            y_v = -v_limit;
+        }
 
-      x_v = (x_sumv - (x_sum * x_sum / set->sample_count)) / set->sample_count;
-      y_v = (y_sumv - (y_sum * y_sum / set->sample_count)) / set->sample_count;
-      theta_v = (theta_sumv - (theta_sum * theta_sum / set->sample_count)) / set->sample_count;
-      
-      //分散の制限(これがないとエラーを起こす), オーバーフロー防止
-      if(x_v >= v_limit){
-        x_v = v_limit;
-      }
-      if(x_v <= -v_limit){
-        x_v = -v_limit;
-      }
-      if(y_v >= v_limit){
-        y_v = v_limit;
-      }
-      if(y_v <= -v_limit){
-        y_v = -v_limit;
-      }
-      if(theta_v >= M_PI/2){
-        theta_v = M_PI/2;
-      }
-      if(theta_v <= -M_PI/2){
-        theta_v = -M_PI/2;
-      }
-      
+        if(theta_v >= M_PI/2){
+           theta_v = M_PI/2;
+        }
+        else if(theta_v <= -M_PI/2){
+            theta_v = -M_PI/2;
+        }
+
         reset_limit = ((int)x_v + (int)y_v) / 2;
-
-      //分散の分だけ広げる
-      if(reset_count >= reset_limit){
-        for(i = 0; i < set->sample_count; i++){
-          sample = set->samples + i;
-          sample->pose.v[0] += (drand48() * 4 * x_v) - (2 * x_v);
-          sample->pose.v[1] += (drand48() * 4 * y_v) - (2 * y_v);
-          sample->pose.v[2] += (drand48() * 2 * theta_v) - (1 * theta_v);
-          sample->weight = 1.0 / set->sample_count;
-          }
-
-        reset_count = 0;
-        total = (*sensor_fn) (sensor_data, set);
-      }
-      reset_count++;
+        //分散の分だけ広げる
+        if(reset_count >= reset_limit){
+            for(i = 0; i < set->sample_count; i++){
+                sample = set->samples + i;
+                sample->pose.v[0] += (drand48() * 4 * x_v) - (2 * x_v);
+                sample->pose.v[1] += (drand48() * 4 * y_v) - (2 * y_v);
+                sample->pose.v[2] += (drand48() * 2 * theta_v) - (1 * theta_v);
+                sample->weight = 1.0 / set->sample_count;
+            }
+            reset_count = 0;
+            total = (*sensor_fn) (sensor_data, set);
+        }
+        reset_count++;
     }
-    // else
-    // {
+    // else{
     //   printf("not kidnapped\n");
     // }
-/*------------------------------------------------------------------------------------*/
-
+    /*------------------------------------------------------------------------------------*/
 
   }
   else

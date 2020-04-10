@@ -31,9 +31,11 @@
 #include <math.h>
 #include <stdlib.h>
 #include <assert.h>
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
+#endif
 
-#include "amcl_laser.h"
+#include "amcl/sensors/amcl_laser.h"
 
 using namespace amcl;
 

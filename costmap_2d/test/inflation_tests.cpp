@@ -31,6 +31,8 @@
  * @author David Lu!!
  * Test harness for InflationLayer for Costmap2D
  */
+#include <map>
+#include <cmath>
 
 #include <costmap_2d/costmap_2d.h>
 #include <costmap_2d/layered_costmap.h>
@@ -38,10 +40,7 @@
 #include <costmap_2d/inflation_layer.h>
 #include <costmap_2d/observation_buffer.h>
 #include <costmap_2d/testing_helper.h>
-#include <queue>
-#include <set>
 #include <gtest/gtest.h>
-#include <tf/transform_listener.h>
 
 using namespace costmap_2d;
 using geometry_msgs::Point;
@@ -75,60 +74,61 @@ void validatePointInflation(unsigned int mx, unsigned int my, Costmap2D* costmap
 {
   bool* seen = new bool[costmap->getSizeInCellsX() * costmap->getSizeInCellsY()];
   memset(seen, false, costmap->getSizeInCellsX() * costmap->getSizeInCellsY() * sizeof(bool));
-  std::priority_queue<CellData> q;
-  CellData initial(0, costmap->getIndex(mx, my), mx, my, mx, my);
-  q.push(initial);
-  while (!q.empty())
+  std::map<double, std::vector<CellData> > m;
+  CellData initial(costmap->getIndex(mx, my), mx, my, mx, my);
+  m[0].push_back(initial);
+  for (std::map<double, std::vector<CellData> >::iterator bin = m.begin(); bin != m.end(); ++bin)
   {
-    const CellData& cell = q.top();
-    if (!seen[cell.index_])
+    for (int i = 0; i < bin->second.size(); ++i)
     {
-      seen[cell.index_] = true;
-      unsigned int dx = abs(cell.x_ - cell.src_x_);
-      unsigned int dy = abs(cell.y_ - cell.src_y_);
-      double dist = hypot(dx, dy);
+      const CellData& cell = bin->second[i];
+      if (!seen[cell.index_])
+      {
+        seen[cell.index_] = true;
+        unsigned int dx = (cell.x_ > cell.src_x_) ? cell.x_ - cell.src_x_ : cell.src_x_ - cell.x_;
+        unsigned int dy = (cell.y_ > cell.src_y_) ? cell.y_ - cell.src_y_ : cell.src_y_ - cell.y_;
+        double dist = hypot(dx, dy);
 
-      unsigned char expected_cost = ilayer->computeCost(dist);
-      ASSERT_TRUE(costmap->getCost(cell.x_, cell.y_) >= expected_cost);
+        unsigned char expected_cost = ilayer->computeCost(dist);
+        ASSERT_TRUE(costmap->getCost(cell.x_, cell.y_) >= expected_cost);
 
-      if (dist > inflation_radius)
-      {
-        q.pop();
-        continue;
-      }
+        if (dist > inflation_radius)
+        {
+          continue;
+        }
 
-      if (cell.x_ > 0)
-      {
-        CellData data(dist, costmap->getIndex(cell.x_-1, cell.y_),
-                      cell.x_-1, cell.y_, cell.src_x_, cell.src_y_);
-        q.push(data);
-      }
-      if (cell.y_ > 0)
-      {
-        CellData data(dist, costmap->getIndex(cell.x_, cell.y_-1),
-                      cell.x_, cell.y_-1, cell.src_x_, cell.src_y_);
-        q.push(data);
-      }
-      if (cell.x_ < costmap->getSizeInCellsX() - 1)
-      {
-        CellData data(dist, costmap->getIndex(cell.x_+1, cell.y_),
-                      cell.x_+1, cell.y_, cell.src_x_, cell.src_y_);
-        q.push(data);
-      }
-      if (cell.y_ < costmap->getSizeInCellsY() - 1)
-      {
-        CellData data(dist, costmap->getIndex(cell.x_, cell.y_+1),
-                      cell.x_, cell.y_+1, cell.src_x_, cell.src_y_);
-        q.push(data);
+        if (cell.x_ > 0)
+        {
+          CellData data(costmap->getIndex(cell.x_-1, cell.y_),
+                        cell.x_-1, cell.y_, cell.src_x_, cell.src_y_);
+          m[dist].push_back(data);
+        }
+        if (cell.y_ > 0)
+        {
+          CellData data(costmap->getIndex(cell.x_, cell.y_-1),
+                        cell.x_, cell.y_-1, cell.src_x_, cell.src_y_);
+          m[dist].push_back(data);
+        }
+        if (cell.x_ < costmap->getSizeInCellsX() - 1)
+        {
+          CellData data(costmap->getIndex(cell.x_+1, cell.y_),
+                        cell.x_+1, cell.y_, cell.src_x_, cell.src_y_);
+          m[dist].push_back(data);
+        }
+        if (cell.y_ < costmap->getSizeInCellsY() - 1)
+        {
+          CellData data(costmap->getIndex(cell.x_, cell.y_+1),
+                        cell.x_, cell.y_+1, cell.src_x_, cell.src_y_);
+          m[dist].push_back(data);
+        }
       }
     }
-    q.pop();
   }
   delete[] seen;
 }
 
 TEST(costmap, testAdjacentToObstacleCanStillMove){
-  tf::TransformListener tf;
+  tf2_ros::Buffer tf;
   LayeredCostmap layers("frame", false, false);
   layers.resizeMap(10, 10, 1, 0, 0);
 
@@ -154,7 +154,7 @@ TEST(costmap, testAdjacentToObstacleCanStillMove){
 }
 
 TEST(costmap, testInflationShouldNotCreateUnknowns){
-  tf::TransformListener tf;
+  tf2_ros::Buffer tf;
   LayeredCostmap layers("frame", false, false);
   layers.resizeMap(10, 10, 1, 0, 0);
 
@@ -179,7 +179,7 @@ TEST(costmap, testInflationShouldNotCreateUnknowns){
  * Test for the cost function correctness with a larger range and different values
  */
 TEST(costmap, testCostFunctionCorrectness){
-  tf::TransformListener tf;
+  tf2_ros::Buffer tf;
   LayeredCostmap layers("frame", false, false);
   layers.resizeMap(100, 100, 1, 0, 0);
 
@@ -242,12 +242,12 @@ TEST(costmap, testCostFunctionCorrectness){
 
 /**
  * Test that there is no regression and that costs do not get
- * underestimated due to the underlying priority queue being
- * misused. This is a more thorough test of the cost function being
- * correctly applied.
+ * underestimated with the distance-as-key map used to replace
+ * the previously used priority queue. This is a more thorough
+ * test of the cost function being correctly applied.
  */
-TEST(costmap, testPriorityQueueUseCorrectness){
-  tf::TransformListener tf;
+TEST(costmap, testInflationOrderCorrectness){
+  tf2_ros::Buffer tf;
   LayeredCostmap layers("frame", false, false);
   layers.resizeMap(10, 10, 1, 0, 0);
 
@@ -276,7 +276,7 @@ TEST(costmap, testPriorityQueueUseCorrectness){
  */
 TEST(costmap, testInflation){
 
-  tf::TransformListener tf;
+  tf2_ros::Buffer tf;
   LayeredCostmap layers("frame", false, false);
 
   // Footprint with inscribed radius = 2.1
@@ -340,7 +340,7 @@ TEST(costmap, testInflation){
  */
 TEST(costmap, testInflation2){
 
-  tf::TransformListener tf;
+  tf2_ros::Buffer tf;
   LayeredCostmap layers("frame", false, false);
 
   // Footprint with inscribed radius = 2.1
@@ -368,7 +368,7 @@ TEST(costmap, testInflation2){
  * Test inflation behavior, starting with an empty map
  */
 TEST(costmap, testInflation3){
-  tf::TransformListener tf;
+  tf2_ros::Buffer tf;
   LayeredCostmap layers("frame", false, false);
   layers.resizeMap(10, 10, 1, 0, 0);
 

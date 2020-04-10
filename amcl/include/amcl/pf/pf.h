@@ -127,7 +127,8 @@ typedef struct _pf_t
   // Decay rates for running averages
   double alpha_slow, alpha_fast;
 
-  int do_reset;
+  // ER threshold
+  bool do_reset;
   double alpha, reset_th_cov;
 
   // Function used to draw random pose samples
@@ -142,11 +143,11 @@ typedef struct _pf_t
 // Create a new filter
 pf_t *pf_alloc(int min_samples, int max_samples,
                double alpha_slow, double alpha_fast,
-               int do_reset,
-               double alpha, double reset_th_cov,
+	       bool do_reset,
+	       double alpha, double reset_th_cov,
                pf_init_model_fn_t random_pose_fn, void *random_pose_data);
 
-void pf_set_reset_flag(pf_t *pf, int flag);
+void pf_set_reset_flag(pf_t *pf, bool flag);
 
 // Free an existing filter
 void pf_free(pf_t *pf);
@@ -173,6 +174,10 @@ void pf_get_cep_stats(pf_t *pf, pf_vector_t *mean, double *var);
 // there is no such cluster.
 int pf_get_cluster_stats(pf_t *pf, int cluster, double *weight,
                          pf_vector_t *mean, pf_matrix_t *cov);
+
+// Re-compute the cluster statistics for a sample set
+void pf_cluster_stats(pf_t *pf, pf_sample_set_t *set);
+
 
 // Display the sample set
 void pf_draw_samples(pf_t *pf, struct _rtk_fig_t *fig, int max_samples);
